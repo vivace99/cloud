@@ -1,5 +1,11 @@
 *.py[cod]
 
+# PDF extensions
+*.pdf
+
+# Java compiled class
+*.class
+
 # C extensions
 *.so
 
