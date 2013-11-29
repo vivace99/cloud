@@ -194,7 +194,7 @@ def MakeAsyncCheck(_jobid, _command):
 
 def CheckAsync(_jobid, _command):
     while True:
-        time.sleep(5)
+        time.sleep(10)
         result = CallAPI('server', 'queryAsyncJobResult', {'jobid':_jobid}, None, None, None, None, False)
         if result is not None:
             if 'jobstatus' in result:
@@ -202,6 +202,7 @@ def CheckAsync(_jobid, _command):
                     continue
                 elif result['jobstatus'] == 1:
                     print _command + ' complete!'
+                    print result
                     if 'jobresult' in result:
                         if _command == 'deployVirtualMachine':
                             if 'virtualmachine' in result['jobresult']:
@@ -209,7 +210,6 @@ def CheckAsync(_jobid, _command):
                         elif _command == 'createPortForwardingRule':
                             if 'portforwardingrule' in result['jobresult']:
                                 CBcreatePortForwardingRule(result['jobresult']['portforwardingrule'])
-                    print result
                     return
                 elif result['jobstatus'] == 2:
                     print 'fail'
@@ -231,7 +231,11 @@ def CallAPI(_api_type, _command, _data_param, _node_name, _filter, _result, _par
         resp = client.run(_command, _data_param)
     else:
         resp = client.run(_command)
+    #print resp
     if resp is not None:
+        if 'errorcode' in resp:
+            PrintAPIError(resp)
+            return None
         real_resp = None
         if _node_name is not None:
             if _node_name in resp:
@@ -253,6 +257,11 @@ def CallAPI(_api_type, _command, _data_param, _node_name, _filter, _result, _par
     else:
         PrintLog(_node_name + ' does not exist!')
         return None
+
+def PrintAPIError(_error):
+    print _error['errortext']
+    time.sleep(1)
+    ClearScreen()
 
 ########## 사용자 입력 함수 ##########
 # 데이터 중 하나를 선택해서 원하는 parameter를 반환

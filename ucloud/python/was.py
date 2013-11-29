@@ -33,6 +33,7 @@ class WAS(Base):
 
 
 
+# 정보를 받아서 VM 생성 -> 생성되면 이름에 맞춰서 방화벽/포트포워드 추가 -> 포트포워드 완료시 로드밸런서에 추가
 class WAS_Add(BaseDo):
     def __init__(self, _zone):
         BaseDo.__init__(self)
@@ -42,32 +43,48 @@ class WAS_Add(BaseDo):
         self.param.append({'required':False, 'default':False, 'multiple':True, 'type':'function', 'function':'NetworkList', 'display':'Select CIP', 'hr_resid':'displaytext', 'hr_value':'', 'reqid':'networkids', 'resid':'id', 'value':''})
         self.param.append({'required':False, 'default':False, 'multiple':False, 'type':'function', 'function':'ProductList', 'display':'Disk', 'hr_resid':'diskofferingid', 'hr_value':'', 'reqid':'diskofferingid', 'resid':'diskofferingid', 'value':''})
         self.param.append({'required':True, 'default':False, 'multiple':False, 'type':'manual', 'display':'num of VM', 'data_type':'int', 'hr_value':1, 'reqid':'', 'value':1})
-        self.param.append({'required':True, 'default':False, 'multiple':False, 'type':'manual', 'display':'VM name prefix', 'data_type':'string', 'hr_value':'', 'reqid':'displayname', 'value':''})
+        self.param.append({'required':True, 'default':False, 'multiple':False, 'type':'manual', 'display':'use nas[1-8]', 'data_type':'int', 'hr_value':'', 'reqid':'displayname', 'value':''})
     
     def Do(self):
         if BaseDo.Do(self) is True:
             api_type = 'server'
             command = 'deployVirtualMachine'
             num_of_server = 1
-            name_of_server = 'DT-WAS-GP1'
+            name_of_server = ''
             for index, menu in enumerate(self.param):
                 if menu['display'] == 'num of VM':
                     num_of_server = menu['value']
                 if menu['reqid'] == 'displayname':
-                    name_of_server = menu['value']
+                    name_of_server = 'dt-kakao-was-p' + str(menu['value']) + '-node'
                 if menu['required'] == False and 'reqid' in menu:
                     if menu['value'] != '':
                         self.data_param[menu['reqid']] = menu['value']
+            server_list = CallAPI('server', 'listVirtualMachines', None, 'virtualmachine', [{'field':'displayname', 'search':name_of_server}], None, None, False)
+            server_name_map = {}
+            for index, vm in enumerate(server_list):
+                server_name_map[vm['displayname'][vm['displayname'].index('-node')+5]] = 'O'
             if num_of_server == 1:
-                self.data_param['displayname'] = name_of_server
+                print 'please wait! deploying server #1 ...'
+                postfix_of_server = 1
+                while str(postfix_of_server) in server_name_map:
+                    postfix_of_server += 1
+                server_name_map[str(postfix_of_server)] = 'O'
+                self.data_param['displayname'] = name_of_server + str(postfix_of_server)
                 resp = CallAPI(api_type, command, self.data_param, None, None, None, None, False)
                 MakeAsyncCheck(resp['jobid'], command)
             else:
                 while num_of_server > 0:
-                    self.data_param['displayname'] = name_of_server + '-' + str(num_of_server)
+                    print 'please wait! deploying server #' + str(num_of_server) + ' ...'
+                    postfix_of_server = 1
+                    while str(postfix_of_server) in server_name_map:
+                        postfix_of_server += 1
+                    server_name_map[str(postfix_of_server)] = 'O'
+                    self.data_param['displayname'] = name_of_server + str(postfix_of_server)
                     resp = CallAPI(api_type, command, self.data_param, None, None, None, None, False)
                     MakeAsyncCheck(resp['jobid'], command)
                     num_of_server -= 1
+                    if num_of_server > 0:
+                        time.sleep(10)
         return False
     
     def SelectParam(self, _choice):
@@ -92,6 +109,11 @@ class WAS_Add(BaseDo):
 
 
 
+# VM 선택 후 -> 
+# VM id로 VM 삭제
+# VM name으로 포트포워드 룰에서 사용 중인 ipaddress, publicport를 찾고 포트포워드룰에서 포트포워드룰id로 삭제
+# 방화벽룰에서 ipaddress=ipaddress, startport=publicport를 찾고 방화벽룰에서 방화벽룰id로 삭제
+# VM name으로 사용중인 로드밸런서를 찾고 로드밸런서id로 서비스웹서버리스트를 찾고 서비스웹서버리스트에서 VM id로 서비스id를 찾아서 제거
 class WAS_Remove(BaseDo):
     def __init__(self, _zone):
         BaseDo.__init__(self)
@@ -102,13 +124,38 @@ class WAS_Remove(BaseDo):
             api_type = 'server'
             command = 'destroyVirtualMachine'
             server_list = []
-            for index, menu in enumerate(self.param):
+            for index_menu, menu in enumerate(self.param):
                 if menu['reqid'] == 'id':
-                    server_list = menu['value'].split(',')
-            for index, menu in enumerate(server_list):
-                self.data_param['id'] = menu
+                    id_list = menu['value'].split(',')
+                    name_list = menu['hr_value'].split(',')
+                    list_index = 0
+                    for index_virtualmachineid, virtualmachineid in enumerate(id_list):
+                        server_list.append({'virtualmachineid':virtualmachineid, 'virtualmachinename':name_list[list_index]})
+                        list_index += 1
+            for index_vm, vm in enumerate(server_list):
+                self.data_param['id'] = vm['virtualmachineid']
                 resp = CallAPI(api_type, command, self.data_param, None, None, None, None, False)
                 MakeAsyncCheck(resp['jobid'], command)
+                #print 'remove VM'
+                port_list = CallAPI('server', 'listPortForwardingRules', None, 'portforwardingrule', [{'field':'virtualmachineid', 'search':vm['virtualmachineid']}], None, None, False)
+                for index_port, port in enumerate(port_list):
+                    #print 'remove portforward ' + port['virtualmachinedisplayname'] + ' -> ' + port['privateport'] + ' : ' + port['publicport']
+                    resp_port = CallAPI('server', 'deletePortForwardingRule', {'id':port['id']}, None, None, None, None, False)
+                    MakeAsyncCheck(resp_port['jobid'], 'deletePortForwardingRule')
+                    firewall_list = CallAPI('server', 'listFirewallRules', None, 'firewallrule', [{'field':'ipaddress', 'search':port['ipaddress']}, {'field':'startport', 'search':port['publicport']}], None, None, False)
+                    for index_firewall, firewall in enumerate(firewall_list):
+                        #print 'remove firewall ' + firewall['ipaddress'] + ' -> ' + firewall['startport']
+                        resp_firewall = CallAPI('server', 'deleteFirewallRule', {'id':firewall['id']}, None, None, None, None, False)
+                        MakeAsyncCheck(resp_firewall['jobid'], 'deleteFirewallRule')
+                node_nas = vm['virtualmachinename'][14:vm['virtualmachinename'].index('-node')]
+                lb_list = CallAPI('lb', 'listLoadBalancers', None, 'loadbalancer', [{'field':'name', 'search':node_nas}], None, None, False)
+                for index_lb, lb in enumerate(lb_list):
+                    svm_list = CallAPI('lb', 'listLoadBalancerWebServers', {'loadbalancerid':lb['loadbalancerid']}, 'loadbalancerwebserver', [{'field':'virtualmachineid', 'search':vm['virtualmachineid']}], None, None, False)
+                    for index_svm, svm in enumerate(svm_list):
+                        #print 'remove lb_webserver ' + svm['ipaddress'] + ' -> ' + svm['publicport'] + ' from ' + lb['name']
+                        resp_removelb = CallAPI('lb', 'removeLoadBalancerWebServer', {'serviceid':svm['serviceid']}, None, None, None, None, False)
+                        if resp_removelb['success'] is True:
+                            print 'removeLoadBalancerWebServer complete!'
         return False
     
     def SelectParam(self, _choice):

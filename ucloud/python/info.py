@@ -38,32 +38,12 @@ class INFO(Base):
 
 ########## 테스트 함수 ##########
 def Test(result):
-    if '-was-' in result['displayname']:
-        # new WAS VM
-        node_id = result['id']
-        node_name = result['displayname']
-        node_nas = int(node_name[14:node_name.index('-node')])
-        node_number = int(node_name[node_name.index('-node')+5])
-        # get used port for service
-        api_type = 'server'
-        command = 'listPortForwardingRules'
-        data_param = None
-        node_name = 'portforwardingrule'
-        data_filter = [{'field':'ipaddress', 'search':'14.63.170.144'}]
-        result = None
-        param = None
-        port_used = CallAPI(api_type, command, data_param, node_name, data_filter, result, param, False)
-        port_http = 80
-        port_https = 443
-        port_http_map = {}
-        port_https_map = {}
-        for index, row in enumerate(port_used):
-            if int(row['publicport']) < 443:
-                port_http_map[row['publicport']] = 'O'
-            else:
-                port_https_map[row['publicport']] = 'O'
-        while str(port_http) in port_http_map:
-            port_http += 1
-        while str(port_https) in port_https_map:
-            port_https += 1
-        print 'use ' + str(port_http) + ' and ' + str(port_https)
+    lb_list = CallAPI('lb', 'listLoadBalancers', None, 'loadbalancer', [{'field':'name', 'search':'dt-kakao-https2'}], None, None, False)
+    ClearScreen()
+    '''
+    for index_lb, lb in enumerate(lb_list):
+        svm_list = CallAPI('lb', 'listLoadBalancerWebServers', {'loadbalancerid':lb['loadbalancerid']}, 'loadbalancerwebserver', None, None, None, False)
+        for index_svm, svm in enumerate(svm_list):
+            #print 'remove lb_webserver ' + svm['ipaddress'] + ' -> ' + svm['publicport'] + ' from ' + lb['name']
+            resp_removelb = CallAPI('lb', 'removeLoadBalancerWebServer', {'serviceid':svm['serviceid']}, None, None, None, None, False)
+            print resp_removelb'''
