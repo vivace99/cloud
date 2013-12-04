@@ -3,6 +3,7 @@ __author__ = 'Edward Lee'
 
 from base import *
 from info import *
+import base64
 
 class WAS(Base):
     def __init__(self):
@@ -51,10 +52,12 @@ class WAS_Add(BaseDo):
             command = 'deployVirtualMachine'
             num_of_server = 1
             name_of_server = ''
+            partition = '1'
             for index, menu in enumerate(self.param):
                 if menu['display'] == 'num of VM':
                     num_of_server = menu['value']
                 if menu['reqid'] == 'displayname':
+                    partition = str(menu['value'])
                     name_of_server = 'dt-kakao-was-p' + str(menu['value']) + '-node'
                 if menu['required'] == False and 'reqid' in menu:
                     if menu['value'] != '':
@@ -70,6 +73,7 @@ class WAS_Add(BaseDo):
                     postfix_of_server += 1
                 server_name_map[str(postfix_of_server)] = 'O'
                 self.data_param['displayname'] = name_of_server + str(postfix_of_server)
+                self.data_param['userdata'] = base64.encodestring(partition)
                 resp = CallAPI(api_type, command, self.data_param, None, None, None, None, False)
                 MakeAsyncCheck(resp['jobid'], command)
             else:
@@ -80,6 +84,7 @@ class WAS_Add(BaseDo):
                         postfix_of_server += 1
                     server_name_map[str(postfix_of_server)] = 'O'
                     self.data_param['displayname'] = name_of_server + str(postfix_of_server)
+                    self.data_param['userdata'] = base64.encodestring(partition)
                     resp = CallAPI(api_type, command, self.data_param, None, None, None, None, False)
                     MakeAsyncCheck(resp['jobid'], command)
                     num_of_server -= 1
